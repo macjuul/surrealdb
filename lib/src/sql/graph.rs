@@ -1,6 +1,9 @@
 use crate::sql::comment::mightbespace;
 use crate::sql::comment::shouldbespace;
 use crate::sql::cond::{cond, Cond};
+use crate::sql::order::{order, Orders};
+use crate::sql::limit::{limit, Limit};
+use crate::sql::start::{start, Start};
 use crate::sql::dir::{dir, Dir};
 use crate::sql::error::IResult;
 use crate::sql::idiom::{idiom, Idiom};
@@ -19,6 +22,9 @@ pub struct Graph {
 	pub what: Tables,
 	pub cond: Option<Cond>,
 	pub alias: Option<Idiom>,
+	pub order: Option<Orders>,
+	pub limit: Option<Limit>,
+	pub start: Option<Start>,
 }
 
 impl Graph {
@@ -30,7 +36,7 @@ impl Graph {
 
 impl Display for Graph {
 	fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-		if self.what.0.len() <= 1 && self.cond.is_none() && self.alias.is_none() {
+		if self.what.0.len() <= 1 && self.cond.is_none() && self.order.is_none() && self.limit.is_none() && self.start.is_none() && self.alias.is_none() {
 			Display::fmt(&self.dir, f)?;
 			match self.what.len() {
 				0 => f.write_char('?'),
@@ -45,6 +51,15 @@ impl Display for Graph {
 			if let Some(ref v) = self.cond {
 				write!(f, " {v}")?
 			}
+			if let Some(ref v) = self.order {
+				write!(f, " {v}")?
+			}
+			if let Some(ref v) = self.limit {
+				write!(f, " {v}")?
+			}
+			if let Some(ref v) = self.start {
+				write!(f, " {v}")?
+			}
 			if let Some(ref v) = self.alias {
 				write!(f, " AS {v}")?
 			}
@@ -55,30 +70,48 @@ impl Display for Graph {
 
 pub fn graph(i: &str) -> IResult<&str, Graph> {
 	let (i, dir) = dir(i)?;
-	let (i, (what, cond, alias)) = alt((simple, custom))(i)?;
+	let (i, (what, cond, order, limit, start, alias)) = alt((simple, custom))(i)?;
 	Ok((
 		i,
 		Graph {
 			dir,
 			what,
 			cond,
+			order,
+			limit,
+			start,
 			alias,
 		},
 	))
 }
 
-fn simple(i: &str) -> IResult<&str, (Tables, Option<Cond>, Option<Idiom>)> {
+fn simple(i: &str) -> IResult<&str, (Tables, Option<Cond>, Option<Orders>, Option<Limit>, Option<Start>, Option<Idiom>)> {
 	let (i, w) = alt((any, one))(i)?;
-	Ok((i, (w, None, None)))
+	Ok((i, (w, None, None, None, None, None)))
 }
 
-fn custom(i: &str) -> IResult<&str, (Tables, Option<Cond>, Option<Idiom>)> {
+fn custom(i: &str) -> IResult<&str, (Tables, Option<Cond>, Option<Orders>, Option<Limit>, Option<Start>, Option<Idiom>)> {
 	let (i, _) = char('(')(i)?;
 	let (i, _) = mightbespace(i)?;
 	let (i, w) = alt((any, tables))(i)?;
 	let (i, c) = opt(|i| {
 		let (i, _) = shouldbespace(i)?;
 		let (i, v) = cond(i)?;
+		Ok((i, v))
+	})(i)?;
+	let (i, o) = opt(|i| {
+		let (i, _) = shouldbespace(i)?;
+		let (i, v) = order(i)?;
+		Ok((i, v))
+	})(i)?;
+	let (i, l) = opt(|i| {
+		let (i, _) = shouldbespace(i)?;
+		let (i, v) = limit(i)?;
+		Ok((i, v))
+	})(i)?;
+	let (i, s) = opt(|i| {
+		let (i, _) = shouldbespace(i)?;
+		let (i, v) = start(i)?;
 		Ok((i, v))
 	})(i)?;
 	let (i, a) = opt(|i| {
@@ -90,7 +123,7 @@ fn custom(i: &str) -> IResult<&str, (Tables, Option<Cond>, Option<Idiom>)> {
 	})(i)?;
 	let (i, _) = mightbespace(i)?;
 	let (i, _) = char(')')(i)?;
-	Ok((i, (w, c, a)))
+	Ok((i, (w, c, o, l, s, a)))
 }
 
 fn one(i: &str) -> IResult<&str, Tables> {
@@ -168,5 +201,23 @@ mod tests {
 		assert!(res.is_ok());
 		let out = res.unwrap().1;
 		assert_eq!("->(likes, follows WHERE influencer = true AS connections)", format!("{}", out));
+	}
+
+	#[test]
+	fn graph_limit_start() {
+		let sql = "->(likes START 5 LIMIT 10)";
+		let res = graph(sql);
+		assert!(res.is_ok());
+		let out = res.unwrap().1;
+		assert_eq!("->(likes START 5 LIMIT 10)", format!("{}", out));
+	}
+
+	#[test]
+	fn graph_order() {
+		let sql = "->(likes ORDER BY created_at DESC)";
+		let res = graph(sql);
+		assert!(res.is_ok());
+		let out = res.unwrap().1;
+		assert_eq!("->(likes ORDER BY created_at DESC)", format!("{}", out));
 	}
 }

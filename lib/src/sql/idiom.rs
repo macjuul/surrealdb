@@ -356,12 +356,18 @@ mod tests {
 					what: Table::from("like").into(),
 					cond: None,
 					alias: None,
+					order: None,
+					limit: None,
+					start: None,
 				}),
 				Part::from(Graph {
 					dir: Dir::Out,
 					what: Table::from("person").into(),
 					cond: None,
 					alias: None,
+					order: None,
+					limit: None,
+					start: None,
 				}),
 			])
 		);

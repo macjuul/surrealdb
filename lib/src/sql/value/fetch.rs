@@ -88,6 +88,9 @@ impl Value {
 									what: g.what.clone(),
 								})]),
 								cond: g.cond.clone(),
+								order: g.order.clone(),
+								limit: g.limit.clone(),
+								start: g.start.clone(),
 								..SelectStatement::default()
 							};
 							*self = stm
