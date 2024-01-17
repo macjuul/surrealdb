@@ -8,6 +8,8 @@ use nom::{
 	bytes::complete::tag_no_case,
 	combinator::{cut, opt},
 };
+use nom::sequence::tuple;
+use crate::syn::v1::error::expect_tag_no_case;
 
 pub fn info(i: &str) -> IResult<&str, InfoStatement> {
 	let (i, _) = tag_no_case("INFO")(i)?;
@@ -15,8 +17,8 @@ pub fn info(i: &str) -> IResult<&str, InfoStatement> {
 	let (i, _) = tag_no_case("FOR")(i)?;
 	let (i, _) = cut(shouldbespace)(i)?;
 	expected(
-		"ROOT, NAMESPACE, DATABASE, SCOPE, TABLE or USER",
-		cut(alt((root, ns, db, sc, tb, user))),
+		"ROOT, NAMESPACE, DATABASE, SCOPE, TABLE, USER or TOKEN",
+		cut(alt((root, ns, db, sc, tb, user, token))),
 	)(i)
 }
 
@@ -67,6 +69,19 @@ fn user(i: &str) -> IResult<&str, InfoStatement> {
 
 		Ok((i, InfoStatement::User(user, base)))
 	})(i)
+}
+
+fn token(i: &str) -> IResult<&str, InfoStatement> {
+	let (i, _) = alt((tag_no_case("TOKEN"), tag_no_case("TK")))(i)?;
+	let (i, _) = shouldbespace(i)?;
+	let (i, token) = cut(ident)(i)?;
+	let (i, _) = shouldbespace(i)?;
+	let (i, _) = tag_no_case("ON")(i)?;
+	let (i, _) = opt(tuple((shouldbespace, tag_no_case("SCOPE"))))(i)?;
+	let (i, _) = shouldbespace(i)?;
+	let (i, scope) = cut(ident)(i)?;
+
+	Ok((i, InfoStatement::Token(token, scope)))
 }
 
 #[cfg(test)]
@@ -145,5 +160,14 @@ mod tests {
 		let out = res.unwrap().1;
 		assert_eq!(out, InfoStatement::User(Ident::from("test"), None));
 		assert_eq!("INFO FOR USER test", format!("{}", out));
+	}
+
+	#[test]
+	fn info_query_user() {
+		let sql = "INFO FOR TOKEN \"aaa.bbb.zzz\" ON SCOPE test";
+		let res = info(sql);
+		let out = res.unwrap().1;
+		assert_eq!(out, InfoStatement::Token(Ident::from("aaa.bbb.zzz"), Ident::from("test")));
+		assert_eq!("INFO FOR TOKEN \"aaa.bbb.zzz\" ON SCOPE test", format!("{}", out));
 	}
 }

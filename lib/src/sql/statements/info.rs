@@ -12,7 +12,7 @@ use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize, Store, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
-#[revisioned(revision = 1)]
+#[revisioned(revision = 2)]
 pub enum InfoStatement {
 	Root,
 	Ns,
@@ -20,6 +20,8 @@ pub enum InfoStatement {
 	Sc(Ident),
 	Tb(Ident),
 	User(Ident, Option<Base>),
+	#[revision(start = 2)]
+	Token(Ident, Ident),
 }
 
 impl InfoStatement {
@@ -214,6 +216,21 @@ impl InfoStatement {
 				// Ok all good
 				Value::from(res.to_string()).ok()
 			}
+			InfoStatement::Token(token, scope) => {
+				// Allowed to run?
+				opt.is_allowed(Action::View, ResourceKind::Any, &Base::Db)?;
+				// Claim transaction
+				let mut run = txn.lock().await;
+				// Create the result set
+				let mut res = Object::default();
+				// Find the requested scope
+				let sc = run.get_sc(opt.ns(), opt.db(), scope).await?;
+
+				sc.code
+
+				// Ok all good
+				Value::from(res).ok()
+			}
 		}
 	}
 }
@@ -230,6 +247,7 @@ impl fmt::Display for InfoStatement {
 				Some(ref b) => write!(f, "INFO FOR USER {u} ON {b}"),
 				None => write!(f, "INFO FOR USER {u}"),
 			},
+			Self::Token(ref t, ref s) => write!(f, "INFO FOR TOKEN {t} ON SCOPE {s}"),
 		}
 	}
 }
