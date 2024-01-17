@@ -1,4 +1,4 @@
-use crate::dbs::Session;
+use crate::dbs::{Session, Transaction};
 use crate::err::Error;
 #[cfg(feature = "jwks")]
 use crate::iam::jwks;
@@ -12,6 +12,7 @@ use jsonwebtoken::{decode, DecodingKey, Header, Validation};
 use once_cell::sync::Lazy;
 use std::str::{self, FromStr};
 use std::sync::Arc;
+use crate::sql::statements::DefineScopeStatement;
 
 async fn config(
 	_kvs: &Datastore,
@@ -448,6 +449,31 @@ pub async fn token(kvs: &Datastore, session: &mut Session, token: &str) -> Resul
 		// There was an auth error
 		_ => Err(Error::InvalidAuth),
 	}
+}
+
+pub fn verify_scope_token(
+	token: &str,
+	scope: DefineScopeStatement,
+) -> Result<Value, Error> {
+	let cf = config(Algorithm::Hs512, scope.code)?;
+	// Decode the authentication token
+	let token_data = decode::<Claims>(&token, &cf.0, &cf.1)?;
+	// Convert the token to a SurrealQL object value
+	let value = token_data.claims.clone().into();
+	// Check if the auth token can be used
+	if let Some(nbf) = token_data.claims.nbf {
+		if nbf > Utc::now().timestamp() {
+			return Err(Error::InvalidAuth);
+		}
+	}
+	// Check if the auth token has expired
+	if let Some(exp) = token_data.claims.exp {
+		if exp < Utc::now().timestamp() {
+			return Err(Error::InvalidAuth);
+		}
+	}
+	// Return claims object
+	Value::from(value).ok()
 }
 
 pub async fn verify_root_creds(
