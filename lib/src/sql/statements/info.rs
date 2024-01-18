@@ -2,17 +2,14 @@ use crate::ctx::Context;
 use crate::dbs::{Options, Transaction};
 use crate::doc::CursorDoc;
 use crate::err::Error;
+use crate::iam::verify::verify_scope_token;
 use crate::iam::Action;
 use crate::iam::ResourceKind;
-use crate::sql::{Algorithm, Base, Ident, Object, Value};
+use crate::sql::{Base, Ident, Object, Value};
 use derive::Store;
 use revision::revisioned;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use chrono::Utc;
-use jsonwebtoken::{decode, DecodingKey, encode, EncodingKey};
-use crate::iam::token::HEADER;
-use crate::iam::verify::verify_scope_token;
 
 #[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Serialize, Deserialize, Store, Hash)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
@@ -25,7 +22,7 @@ pub enum InfoStatement {
 	Tb(Ident),
 	User(Ident, Option<Base>),
 	#[revision(start = 2)]
-	Token(Ident, Ident),
+	Token(String, Ident),
 }
 
 impl InfoStatement {
@@ -230,14 +227,14 @@ impl InfoStatement {
 				// Retrieve the scope definition
 				let scope = run.get_sc(opt.ns(), opt.db(), sc).await?;
 				// Verify the scope token
-				let result = verify_scope_token(tk.into(), scope).await;
+				let result = verify_scope_token(&tk, scope);
 				// Insert validation result
 				res.insert("valid".to_owned(), result.is_ok().into());
 				// Handle result
 				if let Ok(claims) = result {
 					res.insert("claims".to_owned(), claims);
 				} else {
-					res.insert("claims".to_owned(), Value::from(Object::default()))
+					res.insert("claims".to_owned(), Value::from(Object::default()));
 				}
 				// Ok all good
 				Value::from(res).ok()

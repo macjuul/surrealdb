@@ -1,9 +1,10 @@
-use crate::dbs::{Session, Transaction};
+use crate::dbs::Session;
 use crate::err::Error;
 #[cfg(feature = "jwks")]
 use crate::iam::jwks;
 use crate::iam::{token::Claims, Actor, Auth, Level, Role};
 use crate::kvs::{Datastore, LockType::*, TransactionType::*};
+use crate::sql::statements::DefineScopeStatement;
 use crate::sql::{statements::DefineUserStatement, Algorithm, Value};
 use crate::syn;
 use argon2::{Argon2, PasswordHash, PasswordVerifier};
@@ -12,7 +13,6 @@ use jsonwebtoken::{decode, DecodingKey, Header, Validation};
 use once_cell::sync::Lazy;
 use std::str::{self, FromStr};
 use std::sync::Arc;
-use crate::sql::statements::DefineScopeStatement;
 
 async fn config(
 	_kvs: &Datastore,
@@ -451,15 +451,10 @@ pub async fn token(kvs: &Datastore, session: &mut Session, token: &str) -> Resul
 	}
 }
 
-pub fn verify_scope_token(
-	token: &str,
-	scope: DefineScopeStatement,
-) -> Result<Value, Error> {
+pub fn verify_scope_token(token: &str, scope: DefineScopeStatement) -> Result<Value, Error> {
 	let cf = config(Algorithm::Hs512, scope.code)?;
 	// Decode the authentication token
 	let token_data = decode::<Claims>(&token, &cf.0, &cf.1)?;
-	// Convert the token to a SurrealQL object value
-	let value = token_data.claims.clone().into();
 	// Check if the auth token can be used
 	if let Some(nbf) = token_data.claims.nbf {
 		if nbf > Utc::now().timestamp() {
@@ -473,7 +468,7 @@ pub fn verify_scope_token(
 		}
 	}
 	// Return claims object
-	Value::from(value).ok()
+	Value::from(token_data.claims).ok()
 }
 
 pub async fn verify_root_creds(

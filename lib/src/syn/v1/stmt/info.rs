@@ -3,13 +3,13 @@ use super::super::{
 	IResult,
 };
 use crate::sql::statements::InfoStatement;
+use crate::syn::v1::literal::strand::strand_raw;
+use nom::sequence::tuple;
 use nom::{
 	branch::alt,
 	bytes::complete::tag_no_case,
 	combinator::{cut, opt},
 };
-use nom::sequence::tuple;
-use crate::syn::v1::error::expect_tag_no_case;
 
 pub fn info(i: &str) -> IResult<&str, InfoStatement> {
 	let (i, _) = tag_no_case("INFO")(i)?;
@@ -74,7 +74,7 @@ fn user(i: &str) -> IResult<&str, InfoStatement> {
 fn token(i: &str) -> IResult<&str, InfoStatement> {
 	let (i, _) = alt((tag_no_case("TOKEN"), tag_no_case("TK")))(i)?;
 	let (i, _) = shouldbespace(i)?;
-	let (i, token) = cut(ident)(i)?;
+	let (i, token) = cut(strand_raw)(i)?;
 	let (i, _) = shouldbespace(i)?;
 	let (i, _) = tag_no_case("ON")(i)?;
 	let (i, _) = opt(tuple((shouldbespace, tag_no_case("SCOPE"))))(i)?;
@@ -163,11 +163,11 @@ mod tests {
 	}
 
 	#[test]
-	fn info_query_user() {
+	fn info_query_token() {
 		let sql = "INFO FOR TOKEN \"aaa.bbb.zzz\" ON SCOPE test";
 		let res = info(sql);
 		let out = res.unwrap().1;
-		assert_eq!(out, InfoStatement::Token(Ident::from("aaa.bbb.zzz"), Ident::from("test")));
+		assert_eq!(out, InfoStatement::Token("aaa.bbb.zzz".to_owned(), Ident::from("test")));
 		assert_eq!("INFO FOR TOKEN \"aaa.bbb.zzz\" ON SCOPE test", format!("{}", out));
 	}
 }
